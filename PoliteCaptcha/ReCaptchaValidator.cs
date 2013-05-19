@@ -1,6 +1,6 @@
 ﻿using System;
-using System.Configuration;
 using System.Web;
+using System.Web.Mvc;
 using Recaptcha;
 
 namespace PoliteCaptcha
@@ -10,14 +10,18 @@ namespace PoliteCaptcha
     /// </summary>
     public class ReCaptchaValidator : ICaptchaValidator
     {
-        readonly RecaptchaValidator recaptchaValidator;
+        readonly RecaptchaValidator _recaptchaValidator;
+        readonly IConfigurationSource _configSource;
 
-        /// <summary>
-        /// Creates a new ReCaptchValidator object.
-        /// </summary>
         public ReCaptchaValidator()
+            : this(new DefaultConfigurationSource())
         {
-            recaptchaValidator = new RecaptchaValidator();
+        }
+
+        public ReCaptchaValidator(IConfigurationSource configSource)
+        {
+            _configSource = configSource;
+            _recaptchaValidator = new RecaptchaValidator();
         }
         
         /// <summary>
@@ -28,9 +32,12 @@ namespace PoliteCaptcha
         public bool Validate(HttpContextBase httpContext)
         {
             if (httpContext == null)
+            {
                 throw new ArgumentNullException("httpContext");
+            }
 
-            var privateApiKey = ConfigurationManager.AppSettings[Const.ReCaptchaPrivateKeyAppSettingKey];
+            var configurationSource = GetConfigurationSource();
+            var privateApiKey = configurationSource.GetConfigurationValue(Const.ReCaptchaPrivateKeyAppSettingKey);
             if (privateApiKey == null)
             {
                 if (!httpContext.Request.IsLocal)
@@ -47,12 +54,31 @@ namespace PoliteCaptcha
             if (string.IsNullOrWhiteSpace(response))
                 return false;
 
-            recaptchaValidator.PrivateKey = privateApiKey;
-            recaptchaValidator.RemoteIP = httpContext.Request.UserHostAddress;
-            recaptchaValidator.Challenge = challenge;
-            recaptchaValidator.Response = response;
+            _recaptchaValidator.PrivateKey = privateApiKey;
+            _recaptchaValidator.RemoteIP = httpContext.Request.UserHostAddress;
+            _recaptchaValidator.Challenge = challenge;
+            _recaptchaValidator.Response = response;
 
-            return recaptchaValidator.Validate().IsValid;
+            return _recaptchaValidator.Validate().IsValid;
+        }
+
+        private IConfigurationSource GetConfigurationSource()
+        {
+            if (_configSource != null)
+            {
+                return _configSource;
+            }
+
+            if (DependencyResolver.Current != null)
+            {
+                var resolvedConfigSource = DependencyResolver.Current.GetService<IConfigurationSource>();
+                if (resolvedConfigSource != null)
+                {
+                    return resolvedConfigSource;
+                }
+            }
+
+            return new DefaultConfigurationSource();
         }
     }
 }
